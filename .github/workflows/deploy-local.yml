@@ -21,7 +21,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Local Server
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, X64]
     environment: ${{ github.event.inputs.environment || 'production' }}
 
     env:

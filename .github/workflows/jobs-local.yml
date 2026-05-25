@@ -12,7 +12,7 @@ concurrency:
 jobs:
   scheduler:
     name: Run Scheduler
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, X64]
     timeout-minutes: 5
 
     steps:
@@ -35,7 +35,7 @@ jobs:
 
   collector:
     name: Run Collector
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, X64]
     needs: scheduler
     timeout-minutes: 10
 
@@ -62,7 +62,7 @@ jobs:
 
   retention:
     name: Run Retention
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, X64]
     if: github.event.schedule == '0 2 * * *'
     timeout-minutes: 30
 
