@@ -44,7 +44,7 @@ func main() {
 		log.Error("failed to recover interrupted jobs", err, nil)
 	} else if result.RunningJobsReset > 0 || result.CollectionRunsInterrupted > 0 {
 		log.Info("recovered interrupted work", logger.Fields{
-			"running_jobs_reset":            result.RunningJobsReset,
+			"running_jobs_reset":          result.RunningJobsReset,
 			"collection_runs_interrupted": result.CollectionRunsInterrupted,
 		})
 	}

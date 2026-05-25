@@ -55,7 +55,7 @@ type openInterestResponse struct {
 }
 
 type longShortRatioItem struct {
-	Symbol      string `json:"symbol"`
+	Symbol         string `json:"symbol"`
 	LongShortRatio string `json:"longShortRatio"`
 	LongAccount    string `json:"longAccount"`
 	ShortAccount   string `json:"shortAccount"`
@@ -63,11 +63,11 @@ type longShortRatioItem struct {
 }
 
 type takerFlowItem struct {
-	Symbol      string `json:"symbol"`
+	Symbol       string `json:"symbol"`
 	BuySellRatio string `json:"buySellRatio"`
-	BuyVol      string `json:"buyVol"`
-	SellVol     string `json:"sellVol"`
-	Timestamp   int64  `json:"timestamp"`
+	BuyVol       string `json:"buyVol"`
+	SellVol      string `json:"sellVol"`
+	Timestamp    int64  `json:"timestamp"`
 }
 
 type basisItem struct {
@@ -295,12 +295,12 @@ func normalizeTakerFlow(resp *excommon.ExchangeResponse, job scheduler.Job, symb
 				SourceEndpointID: resp.SourceEndpointID,
 				RawData:          excommon.RawMessage(item),
 			},
-			Period:        job.Period,
-			SnapshotTime:  snapshotTime,
+			Period:          job.Period,
+			SnapshotTime:    snapshotTime,
 			TakerBuyVolume:  floatPtrSafe(item.BuyVol),
 			TakerSellVolume: floatPtrSafe(item.SellVol),
-			BuySellDelta:  &delta,
-			BuySellRatio:  ratio,
+			BuySellDelta:    &delta,
+			BuySellRatio:    ratio,
 		}
 		if err := normalizers.ValidateTakerFlow(flow); err != nil {
 			continue
