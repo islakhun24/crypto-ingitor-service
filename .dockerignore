@@ -1,0 +1,9 @@
+.git
+.gocache
+.gomodcache
+*.exe
+api-service
+scheduler-service
+collector-service
+retention-service
+dev-server*.log

@@ -1,0 +1,10 @@
+.gocache/
+.gomodcache/
+api-service
+api-service.exe
+scheduler-service
+scheduler-service.exe
+collector-service
+collector-service.exe
+retention-service
+retention-service.exe
