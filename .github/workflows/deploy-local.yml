@@ -25,7 +25,7 @@ jobs:
     environment: ${{ github.event.inputs.environment || 'production' }}
 
     env:
-      DEPLOY_DIR: /opt/crypto-ingitor-service
+      DEPLOY_DIR: /actions-runner/workspace/crypto-ingitor-service
       ENV_FILE: .env.local
 
     steps:
