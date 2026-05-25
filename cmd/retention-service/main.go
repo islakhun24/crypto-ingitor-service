@@ -61,9 +61,7 @@ func main() {
 		"finished": summary.FinishedAt,
 	}
 	if summary.Metrics != nil {
-		fields["total_rows_matched"] = summary.Metrics.TotalRowsMatched
-		fields["total_rows_deleted"] = summary.Metrics.TotalRowsDeleted
-		fields["total_partitions_dropped"] = summary.Metrics.TotalPartitionsDropped
+		fields["metrics"] = summary.Metrics.Prometheus()
 	}
 	log.Info("retention completed", fields)
 

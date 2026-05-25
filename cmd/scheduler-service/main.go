@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"time"
 
 	"aggregator-services/internal/config"
 	"aggregator-services/internal/database"
