@@ -39,6 +39,17 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Check formatting
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Go code is not formatted:"
+          gofmt -s -d .
+          exit 1
+        fi
+
+    - name: Run vet
+      run: go vet ./...
+
     - name: Build all services
       run: |
         go build -trimpath -ldflags="-s -w" ./cmd/api-service
@@ -55,25 +66,7 @@ jobs:
         POSTGRES_DB: crypto_ultimate_test
         POSTGRES_SSLMODE: disable
         SUPPORTED_EXCHANGES: binance,okx,bybit,bitget,gate,mexc
-      run: go test -v -race -coverprofile=coverage.out ./...
-
-    - name: Upload coverage
-      uses: codecov/codecov-action@v4
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      with:
-        files: ./coverage.out
-        fail_ci_if_error: false
-
-    - name: Run vet
-      run: go vet ./...
-
-    - name: Check formatting
-      run: |
-        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-          echo "Go code is not formatted:"
-          gofmt -s -d .
-          exit 1
-        fi
+      run: go test -v -race ./... 2>&1 | tee test-output.txt; exit ${PIPESTATUS[0]}
 
   docker-build:
     name: Docker Build Check
