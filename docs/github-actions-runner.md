@@ -24,8 +24,8 @@ Panduan setup GitHub Actions runner di server lokal (VPS/bare metal) untuk CI/CD
 ssh root@YOUR_SERVER_IP
 
 # Buat direktori
-mkdir -p /opt/github-runner
-cd /opt/github-runner
+mkdir -p /actions-runner
+cd /actions-runner
 
 # Download runner (ganti versi jika ada yang lebih baru)
 curl -o actions-runner-linux-x64-2.311.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
@@ -167,7 +167,7 @@ git push origin main
 journalctl -u actions.runner.* -f
 
 # View runner logs
-cd /opt/github-runner
+cd /actions-runner
 tail -f _diag/*.log
 ```
 
@@ -191,7 +191,7 @@ docker compose logs -f api-service
 ## 7. Update Runner
 
 ```bash
-cd /opt/github-runner
+cd /actions-runner
 
 # Stop
 sudo ./svc.sh stop
@@ -207,7 +207,7 @@ sudo ./svc.sh start
 ## 8. Remove Runner
 
 ```bash
-cd /opt/github-runner
+cd /actions-runner
 
 # Stop service
 sudo ./svc.sh stop
@@ -220,7 +220,7 @@ sudo ./svc.sh uninstall
 
 # Hapus files
 cd /
-rm -rf /opt/github-runner
+rm -rf /actions-runner
 ```
 
 ## Troubleshooting
@@ -294,7 +294,7 @@ pg_isready -h localhost
 4. **Log rotation** — setup logrotate untuk runner logs:
    ```bash
    cat << 'EOF' > /etc/logrotate.d/github-runner
-   /opt/github-runner/_diag/*.log {
+   /actions-runner/_diag/*.log {
        daily
        rotate 7
        compress
