@@ -129,7 +129,42 @@ while true; do make run-scheduler && make run-collector; sleep 60; done
 | [docs/normalizers.md](docs/normalizers.md) | Normalizer documentation |
 | [docs/retention.md](docs/retention.md) | Retention policies |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Troubleshooting runbook |
+| [docs/github-actions-runner.md](docs/github-actions-runner.md) | Setup GitHub Actions self-hosted runner |
 | [deploy/production-checklist.md](deploy/production-checklist.md) | Production checklist |
+
+## CI/CD (GitHub Actions)
+
+| Workflow | File | Trigger | Runner |
+|----------|------|---------|--------|
+| **CI** | `.github/workflows/ci.yml` | Push/PR ke `main`/`develop` | GitHub-hosted (`ubuntu-latest`) |
+| **Deploy** | `.github/workflows/deploy-local.yml` | Push ke `main`, manual dispatch | Self-hosted runner |
+| **Jobs** | `.github/workflows/jobs-local.yml` | Cron setiap 2 menit, manual | Self-hosted runner |
+
+### Setup Self-Hosted Runner
+
+Lihat [docs/github-actions-runner.md](docs/github-actions-runner.md) untuk panduan lengkap.
+
+Quick setup:
+```bash
+# 1. Register runner di GitHub (Settings → Actions → Runners → New)
+
+# 2. Install di server
+mkdir -p /opt/github-runner && cd /opt/github-runner
+curl -o actions-runner-linux-x64.tar.gz -L https://github.com/actions/runner/releases/download/v2.311.0/actions-runner-linux-x64-2.311.0.tar.gz
+tar xzf actions-runner-linux-x64.tar.gz
+./config.sh --url https://github.com/islakhun24/crypto-ingitor-service --token YOUR_TOKEN
+sudo ./svc.sh install && sudo ./svc.sh start
+
+# 3. Tambah repository secrets (POSTGRES_HOST, POSTGRES_PASSWORD, dll)
+
+# 4. Workflow otomatis trigger saat push ke main
+```
+
+### Manual Deploy via GitHub
+
+1. Buka repository → Actions tab
+2. Pilih **Deploy to Local Runner**
+3. Klik **Run workflow** → pilih branch
 
 ## Build Commands
 

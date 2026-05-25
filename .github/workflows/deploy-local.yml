@@ -1,0 +1,189 @@
+name: Deploy to Local Runner
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Local Server
+    runs-on: self-hosted
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    env:
+      DEPLOY_DIR: /opt/crypto-ingitor-service
+      ENV_FILE: .env.local
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Verify environment
+      run: |
+        echo "=== Runner Info ==="
+        hostname
+        whoami
+        go version
+        docker --version
+        docker compose version
+        echo "=== Directory ==="
+        pwd
+        ls -la
+
+    - name: Setup environment
+      run: |
+        if [ ! -f ${{ env.ENV_FILE }} ]; then
+          echo "Creating env file from example..."
+          cp .env.example ${{ env.ENV_FILE }}
+        fi
+        echo "ENV_FILE=${{ env.ENV_FILE }}" >> $GITHUB_ENV
+
+    - name: Download Go dependencies
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        go mod download
+
+    - name: Run tests
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate_test' }}
+        POSTGRES_SSLMODE: disable
+        SUPPORTED_EXCHANGES: binance,okx,bybit,bitget,gate,mexc
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        go test -v ./... 2>&1 | tee test-results.txt || true
+
+    - name: Build binaries
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        make build
+        echo "=== Binaries ==="
+        ls -la api-service scheduler-service collector-service retention-service
+
+    - name: Build Docker image
+      run: |
+        docker build -t aggregator-services:local .
+        docker tag aggregator-services:local aggregator-services:$(git rev-parse --short HEAD)
+        echo "=== Images ==="
+        docker images aggregator-services --format "{{.Repository}}:{{.Tag}} {{.Size}}"
+
+    - name: Database migrations
+      if: github.ref == 'refs/heads/main'
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'postgres' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+      run: |
+        echo "Applying migrations..."
+        for f in migrations/*.sql; do
+          echo "Applying: $f"
+          PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f "$f" || exit 1
+        done
+        echo "Migrations applied successfully"
+
+    - name: Deploy services
+      if: github.ref == 'refs/heads/main'
+      env:
+        ENV_FILE: ${{ env.ENV_FILE }}
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'postgres' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+        REDIS_HOST: ${{ secrets.REDIS_HOST || 'redis' }}
+        REDIS_PORT: ${{ secrets.REDIS_PORT || '6379' }}
+        SUPPORTED_EXCHANGES: ${{ secrets.SUPPORTED_EXCHANGES || 'binance,okx,bybit,bitget,gate,mexc' }}
+        APP_PORT: ${{ secrets.APP_PORT || '8080' }}
+      run: |
+        echo "=== Stopping old services ==="
+        docker compose --env-file ${{ env.ENV_FILE }} stop api-service 2>/dev/null || true
+        docker compose --env-file ${{ env.ENV_FILE }} rm -f api-service 2>/dev/null || true
+
+        echo "=== Starting API Service ==="
+        docker compose --env-file ${{ env.ENV_FILE }} up -d api-service
+
+        echo "=== Pruning old images ==="
+        docker image prune -f
+
+        echo "=== Deployment complete ==="
+
+    - name: Health check
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "Waiting for API to be ready..."
+        sleep 10
+
+        APP_PORT=${APP_PORT:-8080}
+        APP_HOST=${APP_HOST:-localhost}
+
+        echo "Checking health at http://$APP_HOST:$APP_PORT/healthz"
+        for i in {1..10}; do
+          if curl -s -f http://$APP_HOST:$APP_PORT/healthz > /dev/null 2>&1; then
+            echo "Health check PASSED"
+            exit 0
+          fi
+          echo "Attempt $i/10 failed, retrying in 5s..."
+          sleep 5
+        done
+
+        echo "Health check FAILED - checking logs"
+        docker compose --env-file ${{ env.ENV_FILE }} logs --tail=50 api-service
+        exit 1
+
+    - name: Seed endpoints (first deploy)
+      if: github.ref == 'refs/heads/main'
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'postgres' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+      run: |
+        echo "Seeding endpoints..."
+        PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f migrations/000007_seed_exchange_api_endpoints.sql || echo "Endpoints may already be seeded"
+        PGPASSWORD="$POSTGRES_PASSWORD" psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f migrations/000008_seed_derivative_collection_policies.sql || echo "Policies may already be seeded"
+
+    - name: Notify status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Deployment successful"
+          echo "Commit: ${{ github.sha }}"
+          echo "Author: ${{ github.actor }}"
+          echo "Message: ${{ github.event.head_commit.message }}"
+        else
+          echo "❌ Deployment failed"
+          echo "Check logs above for details"
+        fi
+
+    - name: Cleanup old containers
+      if: always()
+      run: |
+        docker container prune -f
+        echo "Cleanup complete"

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: crypto_ultimate_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+        cache: true
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build all services
+      run: |
+        go build -trimpath -ldflags="-s -w" ./cmd/api-service
+        go build -trimpath -ldflags="-s -w" ./cmd/scheduler-service
+        go build -trimpath -ldflags="-s -w" ./cmd/collector-service
+        go build -trimpath -ldflags="-s -w" ./cmd/retention-service
+
+    - name: Run tests
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres
+        POSTGRES_DB: crypto_ultimate_test
+        POSTGRES_SSLMODE: disable
+        SUPPORTED_EXCHANGES: binance,okx,bybit,bitget,gate,mexc
+      run: go test -v -race -coverprofile=coverage.out ./...
+
+    - name: Upload coverage
+      uses: codecov/codecov-action@v4
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      with:
+        files: ./coverage.out
+        fail_ci_if_error: false
+
+    - name: Run vet
+      run: go vet ./...
+
+    - name: Check formatting
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "Go code is not formatted:"
+          gofmt -s -d .
+          exit 1
+        fi
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Build Docker image
+      run: docker build -t aggregator-services:ci .
+
+    - name: Test Docker image
+      run: |
+        docker run --rm aggregator-services:ci /app/api-service --help 2>/dev/null || true
+        docker run --rm aggregator-services:ci /app/scheduler-service --help 2>/dev/null || true
+        docker run --rm aggregator-services:ci /app/collector-service --help 2>/dev/null || true
+        docker run --rm aggregator-services:ci /app/retention-service --help 2>/dev/null || true

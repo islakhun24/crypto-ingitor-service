@@ -1,0 +1,101 @@
+name: Scheduler & Collector Jobs (Local Runner)
+
+on:
+  schedule:
+    - cron: '*/2 * * * *'  # Every 2 minutes
+  workflow_dispatch:
+
+concurrency:
+  group: jobs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scheduler:
+    name: Run Scheduler
+    runs-on: self-hosted
+    timeout-minutes: 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run scheduler
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+        SUPPORTED_EXCHANGES: ${{ secrets.SUPPORTED_EXCHANGES || 'binance,okx,bybit,bitget,gate,mexc' }}
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        go run ./cmd/scheduler-service 2>&1 | tee /tmp/scheduler-$(date +%Y%m%d-%H%M%S).log
+
+  collector:
+    name: Run Collector
+    runs-on: self-hosted
+    needs: scheduler
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run collector
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+        SUPPORTED_EXCHANGES: ${{ secrets.SUPPORTED_EXCHANGES || 'binance,okx,bybit,bitget,gate,mexc' }}
+        RATE_LIMIT_REQUESTS_PER_SECOND: 5
+        RATE_LIMIT_BURST: 10
+        WORKER_CONCURRENCY: 4
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        go run ./cmd/collector-service 2>&1 | tee /tmp/collector-$(date +%Y%m%d-%H%M%S).log
+
+  retention:
+    name: Run Retention
+    runs-on: self-hosted
+    if: github.event.schedule == '0 2 * * *'
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run retention (dry-run first)
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+        DRY_RUN: true
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        echo "=== Retention Dry Run ==="
+        go run ./cmd/retention-service 2>&1 | tee /tmp/retention-dry-$(date +%Y%m%d-%H%M%S).log
+
+    - name: Run retention (actual)
+      env:
+        POSTGRES_HOST: ${{ secrets.POSTGRES_HOST || 'localhost' }}
+        POSTGRES_PORT: ${{ secrets.POSTGRES_PORT || '5432' }}
+        POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'postgres' }}
+        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'postgres' }}
+        POSTGRES_DB: ${{ secrets.POSTGRES_DB || 'crypto_ultimate' }}
+        POSTGRES_SSLMODE: disable
+        DRY_RUN: false
+      run: |
+        export GOCACHE=/tmp/gocache
+        export GOMODCACHE=/tmp/gomodcache
+        echo "=== Retention Actual Run ==="
+        go run ./cmd/retention-service 2>&1 | tee /tmp/retention-$(date +%Y%m%d-%H%M%S).log
