@@ -39,12 +39,37 @@ jobs:
         echo "=== Runner Info ==="
         hostname
         whoami
-        go version
-        docker --version
-        docker compose version
+        echo "Go: $(go version 2>/dev/null || echo 'NOT FOUND')"
+        echo "Docker: $(docker --version 2>/dev/null || echo 'NOT FOUND')"
+        echo "Compose: $(docker compose version 2>/dev/null || docker-compose version 2>/dev/null || echo 'NOT FOUND')"
+        echo "PSQL: $(psql --version 2>/dev/null || echo 'NOT FOUND')"
         echo "=== Directory ==="
         pwd
         ls -la
+
+    - name: Install tools (if missing)
+      run: |
+        # Install Go if missing
+        if ! command -v go &> /dev/null; then
+          echo "Installing Go..."
+          curl -sL https://go.dev/dl/go1.23.6.linux-amd64.tar.gz | sudo tar -C /usr/local -xzf -
+          echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh
+          export PATH=$PATH:/usr/local/go/bin
+        fi
+        # Install Docker if missing
+        if ! command -v docker &> /dev/null; then
+          echo "Installing Docker..."
+          curl -fsSL https://get.docker.com | sudo sh
+          sudo usermod -aG docker $USER
+        fi
+        # Install psql if missing
+        if ! command -v psql &> /dev/null; then
+          echo "Installing PostgreSQL client..."
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+        fi
+        echo "=== Final Check ==="
+        go version
+        docker --version
 
     - name: Setup environment
       run: |
