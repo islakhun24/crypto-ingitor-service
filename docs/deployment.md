@@ -1,15 +1,26 @@
 # Deployment Guide
 
+## Deployment Methods
+
+| Method | Best For | Docs |
+|--------|---------|------|
+| **Docker Compose** | Local dev, single server | [This guide](#docker-compose-stack) |
+| **SSH to VPS** | Production VPS | [docs/ssh-deploy.md](ssh-deploy.md) |
+| **Kubernetes** | Scalable production | [CronJobs section](#kubernetes) |
+| **systemd** | Bare metal / VM | [Timer units section](#systemd) |
+| **crontab** | Simple single-server | [Cron section](#crontab) |
+
 ## Requirements
 
-- Docker & Docker Compose
-- PostgreSQL 16+ (or use provided container)
-- Redis 7+ (or use provided container)
-- Go 1.26+ (for local builds)
+- Docker & Docker Compose (untuk Docker method)
+- PostgreSQL 16+ (atau use container)
+- Redis 7+ (atau use container)
+- Go 1.26+ (untuk local builds)
 
 ## Environment
 
-Copy `.env.example` to `.env.local` and customize:
+Copy `.env.example` ke `.env.local` dan customize:
+
 ```bash
 cp .env.example .env.local
 ```
@@ -27,14 +38,14 @@ make seed-endpoints  # Seeds endpoints and collection policies
 ```
 
 Services defined:
-- `postgres` — primary store
-- `redis` — realtime cache
-- `api-service` — REST API (long-running)
-- `scheduler-service` — one-shot planner (`restart: "no"`)
-- `collector-service` — one-shot worker (`restart: "no"`)
-- `retention-service` — one-shot cleanup (`restart: "no"`)
-- `prometheus` — metrics scraping
-- `grafana` — dashboards (optional profile)
+- `postgres` - primary store
+- `redis` - realtime cache
+- `api-service` - REST API (long-running)
+- `scheduler-service` - one-shot planner (`restart: "no"`)
+- `collector-service` - one-shot worker (`restart: "no"`)
+- `retention-service` - one-shot cleanup (`restart: "no"`)
+- `prometheus` - metrics scraping
+- `grafana` - dashboards (optional profile)
 
 ## Build
 
@@ -46,8 +57,8 @@ make test    # Runs all tests
 ## Dockerfile
 
 Multi-stage build:
-1. `golang:1.26-bookworm` — compile 4 binaries with `-trimpath -ldflags="-s -w"`
-2. `gcr.io/distroless/static-debian12:nonroot` — minimal runtime image
+1. `golang:1.26-bookworm` - compile 4 binaries with `-trimpath -ldflags="-s -w"`
+2. `gcr.io/distroless/static-debian12:nonroot` - minimal runtime image
 
 ## Production Checklist
 
@@ -72,11 +83,69 @@ See `deploy/production-checklist.md`:
 
 The scheduler, collector, and retention services are **one-shot batch jobs**. In production, trigger them externally:
 
-- **Kubernetes**: CronJobs for scheduler and retention; Deployment with HPA for collector (or CronJob if single-worker)
-- **systemd**: Timer units
-- **crontab**: Simple cron entries
+### Kubernetes
 
-Example cron:
+CronJobs for scheduler and retention; Deployment with HPA for collector.
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: aggregator-scheduler
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: scheduler
+            image: aggregator-services:latest
+            command: ["/app/scheduler-service"]
+            envFrom:
+            - configMapRef:
+                name: aggregator-config
+          restartPolicy: OnFailure
+```
+
+### systemd
+
+Timer units for Linux systems.
+
+```ini
+# /etc/systemd/system/aggregator-scheduler.service
+[Unit]
+Description=Aggregator Scheduler
+
+[Service]
+Type=oneshot
+ExecStart=/opt/aggregator/scheduler-service
+Environment=POSTGRES_HOST=localhost
+EnvironmentFile=/opt/aggregator/.env
+
+# /etc/systemd/system/aggregator-scheduler.timer
+[Unit]
+Description=Run Aggregator Scheduler every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable aggregator-scheduler.timer
+sudo systemctl start aggregator-scheduler.timer
+```
+
+### crontab
+
+Simple cron entries.
+
 ```cron
 # Scheduler every minute
 * * * * * /app/scheduler-service
@@ -91,8 +160,26 @@ Example cron:
 ## Connecting to Existing Postgres
 
 If an existing `exchange-normalizer-postgres` container is already on a Docker network, set in `.env.local`:
+
 ```
 POSTGRES_HOST=exchange-normalizer-postgres
 AGGREGATOR_NETWORK_NAME=<network>
 AGGREGATOR_NETWORK_EXTERNAL=true
+```
+
+## Connecting to Existing Infrastructure via SSH
+
+Untuk deploy ke VPS yang sudah berjalan, lihat panduan lengkap di [docs/ssh-deploy.md](ssh-deploy.md).
+
+Quick commands:
+
+```bash
+# Setup SSH key
+ssh-copy-id -i ~/.ssh/id_ed25519.pub root@YOUR_VPS_IP
+
+# Deploy (setelah setup)
+ssh root@YOUR_VPS_IP "cd /opt/crypto-ingitor-service && git pull && docker compose up -d --build"
+
+# Verifikasi
+curl http://YOUR_VPS_IP:8080/healthz
 ```
