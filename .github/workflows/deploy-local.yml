@@ -27,6 +27,7 @@ jobs:
     env:
       DEPLOY_DIR: ${{ github.workspace }}
       ENV_FILE: .env.local
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin:/snap/bin
 
     steps:
     - name: Checkout code
